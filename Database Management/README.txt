@@ -8,7 +8,7 @@ chmod +x list_db
 
 
 Then, run the project with:
-./list_db.sh
+./list_db
 This script will automatically call the other scripts as needed.
 
 Remember to have PostgreSQL installed on your device before running the scripts.
