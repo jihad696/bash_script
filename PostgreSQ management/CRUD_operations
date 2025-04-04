@@ -1,0 +1,203 @@
+#!/bin/bash
+
+read -p "Enter the database name: " dbname_CRUD
+read -p "Enter the table name: " tbname_CRUD
+
+select_query(){
+    select choice in "select all" "specific cols" "select_with_condition"
+    do
+        case $choice in
+            "select all")
+                sudo -u postgres psql -d "$dbname_CRUD" -c "SELECT * FROM $tbname_CRUD;"
+                break
+                ;;
+
+            "specific cols")
+                echo "Please enter the columns (comma-separated, type 'done' to finish):"
+                columns=()
+
+                while true; do
+                    read -p "Enter column: " column
+                    if [[ "$column" == "done" ]]; then
+                        break
+                    fi
+                    columns+=("$column")
+                done
+
+                columns_list=$(IFS=,; echo "${columns[*]}")
+
+                sql_query="SELECT $columns_list FROM $tbname_CRUD;"
+
+                echo "Executing the following SQL query:"
+                echo "$sql_query"
+
+                result=$(sudo -u postgres psql -d "$dbname_CRUD" -c "$sql_query" 2>&1)
+
+                if [[ $? -ne 0 ]]; then
+                    echo "Error: The following error occurred during query execution:"
+                    echo "$result"
+                else
+                    echo "Query executed successfully!"
+                    echo "Results:"
+                    echo "$result"
+                fi
+                break
+                ;;
+
+            "select_with_condition")
+                echo "Enter the column you want to filter by (e.g., column_name=value):"
+                read -p "Condition: " condition
+
+                sql_query="SELECT * FROM $tbname_CRUD WHERE $condition;"
+
+                echo "Executing the following SQL query:"
+                echo "$sql_query"
+
+                result=$(sudo -u postgres psql -d "$dbname_CRUD" -c "$sql_query" 2>&1)
+
+                if [[ $? -ne 0 ]]; then
+                    echo "Error: The following error occurred during query execution:"
+                    echo "$result"
+                else
+                    echo "Query executed successfully!"
+                    echo "Results:"
+                    echo "$result"
+                fi
+                break
+                ;;
+
+            *)
+                echo "Invalid choice, please select again."
+                ;;
+        esac
+    done
+}
+
+insert_query() {
+    echo "Choose Insert Method:"
+    select choice in "Insert All Columns" "Insert Specific Columns"; do
+        case $choice in
+            "Insert All Columns")
+                echo "Enter values (comma-separated, e.g., 'value1', 'value2'):"
+                read -p "Values: " values
+                sql_query="INSERT INTO $tbname_CRUD VALUES ($values);"
+                ;;
+            "Insert Specific Columns")
+                echo "Enter columns (comma-separated, e.g., col1, col2):"
+                read -p "Columns: " columns
+                echo "Enter values (comma-separated, e.g., 'value1', 'value2'):"
+                read -p "Values: " values
+                sql_query="INSERT INTO $tbname_CRUD ($columns) VALUES ($values);"
+                ;;
+            *)
+                echo "Invalid choice"
+                return
+                ;;
+        esac
+
+        echo "Executing: $sql_query"
+        result=$(sudo -u postgres psql -d "$dbname_CRUD" -c "$sql_query" 2>&1)
+
+        if [[ $? -ne 0 ]]; then
+            echo " $result"
+        else
+            echo "Data inserted successfully!"
+        fi
+        break
+    done
+}
+
+
+delete_query() {
+    echo "⚠ WARNING: This action will delete data from the table '$tbname_CRUD'. Proceed with caution!"
+    
+    select choice in "Delete All Data" "Delete with Condition" "Cancel"; do
+        case $choice in
+            "Delete All Data")
+                read -p "Are you sure you want to delete ALL rows? (yes/no): " confirm
+                if [[ "$confirm" == "yes" ]]; then
+                    sql_query="DELETE FROM $tbname_CRUD;"
+                    echo "Executing: $sql_query"
+                    sudo -u postgres psql -d "$dbname_CRUD" -c "$sql_query"
+                    echo "✅ All data deleted successfully."
+                else
+                    echo "❌ Deletion canceled."
+                fi
+                break
+                ;;
+            
+            "Delete with Condition")
+                read -p "Enter condition (e.g., id=5): " condition
+                sql_query="DELETE FROM $tbname_CRUD WHERE $condition;"
+                echo "Executing: $sql_query"
+                sudo -u postgres psql -d "$dbname_CRUD" -c "$sql_query"
+                echo "✅ Data deleted successfully."
+                break
+                ;;
+            
+            "Cancel")
+                echo "❌ Deletion operation canceled."
+                break
+                ;;
+            
+            *)
+                echo "Invalid choice, please try again."
+                ;;
+        esac
+    done
+}
+
+Update_fun() {
+    echo "⚠ You are about to update data in the table '$tbname_CRUD'. Proceed with caution!"
+
+    read -p "Enter the column you want to update: " colname
+    read -p "Enter the new value for $colname: " newvalue
+    read -p "Enter the condition (e.g., id=5): " condition
+
+    sql_query="UPDATE $tbname_CRUD SET $colname = '$newvalue' WHERE $condition;"
+    echo "Executing: $sql_query"
+    
+    result=$(sudo -u postgres psql -d "$dbname_CRUD" -c "$sql_query" 2>&1)
+
+    if [[ $? -ne 0 ]]; then
+        echo "❌ Error occurred during update:"
+        echo "$result"
+    else
+        echo "✅ Update successful!"
+    fi
+}
+
+
+select CRUD in "Update" "DELETE"  "INSERT" "SELECT"
+do 
+case $CRUD in 
+		"Update")
+		    Update_fun 
+   		 ;; 
+	         "DELETE")
+			delete_query
+			;;
+		"INSERT")
+			insert_query
+				;;
+		"SELECT")
+			select_query
+			;;
+		      *)
+            echo "❌ Invalid choice. Please select a valid option."
+            ;;
+    esac
+done
+			
+
+
+
+
+
+
+
+
+
+
+
+

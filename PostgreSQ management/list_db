@@ -1,0 +1,269 @@
+#!/bin/bash
+
+# Function to add constraints to columns
+add_constraint() {
+    local dbname=$1
+    local tbname=$2
+    local colname=$3
+    local existing_columns=$4
+    
+    echo "-----------------Choose Constraint---------------------"
+    select constraints in "UNIQUE" "NOT NULL" "PRIMARY KEY" "DEFAULT" "CHECK" "None"
+    do
+        case $constraints in
+            "NOT NULL")
+                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ALTER COLUMN $colname SET NOT NULL;"
+                echo "NOT NULL constraint added to column '$colname'"
+                break
+                ;;
+
+            "UNIQUE")
+                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ADD CONSTRAINT ${tbname}_${colname}_unique UNIQUE ($colname);"
+                echo "UNIQUE constraint added to column '$colname'"
+                break
+                ;;
+
+            "PRIMARY KEY")
+                # Check if a primary key already exists
+                pk_exists=$(sudo -u postgres psql -d "$dbname" -tAc "SELECT count(*) FROM pg_constraint WHERE conname = '${tbname}_pkey' AND connamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');")
+                
+                if [[ "$pk_exists" -gt "0" ]]; then
+                    echo "A primary key already exists on this table."
+                    echo "Do you want to create a composite primary key or replace the existing one? (composite/replace/cancel)"
+                    read pk_choice
+                    
+                    case $pk_choice in
+                        "composite")
+                            # Get existing primary key columns
+                            existing_pk=$(sudo -u postgres psql -d "$dbname" -tAc "SELECT string_agg(a.attname, ', ') FROM pg_constraint c JOIN pg_attribute a ON a.attnum = ANY(c.conkey) AND a.attrelid = c.conrelid WHERE c.conname = '${tbname}_pkey' AND c.connamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');")
+                            
+                            # Create a new composite primary key including the current column
+                            sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname DROP CONSTRAINT ${tbname}_pkey; ALTER TABLE $tbname ADD CONSTRAINT ${tbname}_pkey PRIMARY KEY ($existing_pk, $colname);"
+                            echo "Composite PRIMARY KEY constraint added including column '$colname'"
+                            ;;
+                        "replace")
+                            sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname DROP CONSTRAINT ${tbname}_pkey; ALTER TABLE $tbname ADD CONSTRAINT ${tbname}_pkey PRIMARY KEY ($colname);"
+                            echo "PRIMARY KEY constraint replaced with column '$colname'"
+                            ;;
+                        "cancel")
+                            echo "PRIMARY KEY operation cancelled"
+                            ;;
+                        *)
+                            echo "Invalid choice, PRIMARY KEY operation cancelled"
+                            ;;
+                    esac
+                else
+                    sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ADD CONSTRAINT ${tbname}_pkey PRIMARY KEY ($colname);"
+                    echo "PRIMARY KEY constraint added to column '$colname'"
+                fi
+                break
+                ;;
+
+            "DEFAULT")
+                echo "Enter the default value:"
+                read default_value
+                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ALTER COLUMN $colname SET DEFAULT '$default_value';"
+                echo "DEFAULT constraint with value '$default_value' added to column '$colname'"
+                break
+                ;;
+
+            "CHECK")
+                echo "Enter the condition for the CHECK constraint (e.g., 'age > 18'):"
+                read check_condition
+                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ADD CONSTRAINT ${tbname}_${colname}_check CHECK ($check_condition);"
+                echo "CHECK constraint with condition '$check_condition' added to column '$colname'"
+                break
+                ;;
+
+            "None")
+                echo "No constraint added."
+                break
+                ;;
+
+            *)
+                echo "Invalid choice. Please choose a valid constraint."
+                ;;
+
+        esac
+    done
+}
+
+PS3="Please select an option: "
+select choice in "create_new_database" "show all dbs" "DROP DATABASE" "CRUD operations" "add relationship"
+do
+    case $choice in
+        "create_new_database")
+            echo "Enter database name: "
+             read dbname
+            
+            # Validate database name is not empty
+            while [[ -z "$dbname" ]]; do
+                echo "Error: Database name cannot be empty. Please enter a valid database name: "
+                read dbname
+            done
+            
+            # Check if the database exists
+            db_exists=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$dbname'")
+
+            if [[ -n "$db_exists" ]]; then
+                echo "Error: Database '$dbname' already exists. Please choose a different name."
+                continue
+            fi            
+
+            # Create the database using the entered name
+            sudo -u postgres psql -c "CREATE DATABASE $dbname"
+            echo "Database '$dbname' created successfully!"
+
+            # Loop for creating multiple tables
+            while true; do 
+                echo "Enter table name (type 'done' to finish): "
+                read tbname
+                
+                # Validate table name is not empty
+                while [[ -z "$tbname" ]]; do
+                    echo "Error: Table name cannot be empty. Please enter a valid table name (or 'done' to finish): "
+                    read tbname
+                done
+                
+                if [[ $tbname == "done" ]]; then 
+                    break
+                fi
+                
+                # Check if table exists
+                table_exists=$(sudo -u postgres psql -d $dbname -tAc "SELECT to_regclass('$tbname');")
+
+                if [[ "$table_exists" != "" ]]; then 
+                    echo "Error: Table '$tbname' already exists. Please enter a different name."
+                    continue 
+                fi
+                
+                # Create new table (without default ID column as primary key will be handled separately)
+                sudo -u postgres psql -d $dbname -c "CREATE TABLE $tbname ();"
+                echo "Table '$tbname' created successfully!"
+                
+                # Track columns for this table
+                existing_columns=""
+                
+                # Loop for adding columns to the table
+                while true; do
+                    echo "Enter column name (leave empty to finish columns): "
+                    read colname
+                    
+                    # Check if user wants to finish adding columns
+                    if [[ -z "$colname" ]]; then 
+                        break 
+                    fi
+                    
+                    # Validate column name (handle PostgreSQL naming restrictions)
+                    if [[ ! $colname =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+                        echo "Error: Invalid column name. Column names must start with a letter or underscore and contain only letters, numbers, and underscores."
+                        continue
+                    fi
+
+                    # Check if column exists
+                    column_exists=$(sudo -u postgres psql -d $dbname -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='$tbname' AND column_name='$colname'")
+
+                    if [[ "$column_exists" == "$colname" ]]; then 
+                        echo "Error: Column '$colname' already exists in table '$tbname'. Please enter a different column name."
+                        continue
+                    fi
+                    
+                    # Add the column first with no type
+                    sudo -u postgres psql -d $dbname -c "ALTER TABLE $tbname ADD COLUMN $colname text;"
+                    
+                    # Update existing columns list
+                    if [[ -z "$existing_columns" ]]; then
+                        existing_columns="$colname"
+                    else
+                        existing_columns="$existing_columns,$colname"
+                    fi
+                    
+                    echo "Choose the column type:"
+                    select datatype in "Varchar" "INT" "Date"
+                    do 
+                        case $datatype in  
+                            "Varchar")
+                                # If Varchar is chosen, ask for a length
+                                read -p "Enter the length for Varchar: " num
+                                  
+                                # Validate varchar length
+                                while [[ ! $num =~ ^[0-9]+$ ]] || [[ $num -le 0 ]]; do
+                                    echo "Error: Varchar length must be a positive number. Please enter a valid length: "
+                                    read num
+                                done
+                                  
+                                echo "You selected Varchar($num)"
+                                # Alter the column type
+                                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ALTER COLUMN $colname TYPE VARCHAR($num);"
+                                  
+                                # Call constraint function
+                                add_constraint "$dbname" "$tbname" "$colname" "$existing_columns"
+                                break
+                                ;;
+
+                            "INT")
+                                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ALTER COLUMN $colname TYPE INTEGER;"
+                                echo "Column type set to INTEGER"
+                                
+                                # Call constraint function
+                                add_constraint "$dbname" "$tbname" "$colname" "$existing_columns"
+                                break
+                                ;;
+
+                            "Date")
+                                sudo -u postgres psql -d "$dbname" -c "ALTER TABLE $tbname ALTER COLUMN $colname TYPE DATE;"
+                                echo "Column type set to DATE"
+                                
+                                # Call constraint function
+                                add_constraint "$dbname" "$tbname" "$colname" "$existing_columns"
+                                break
+                                ;;
+
+                            *)
+                                echo "Invalid option. Try again."
+                                ;;
+                        esac
+                    done
+                done
+            done
+            break 
+            ;;
+
+        "show all dbs")
+            # List all databases
+            sudo -u postgres psql -c "\l"
+            break
+            ;;
+
+        "DROP DATABASE")
+            # Drop the database
+            echo "Enter the database name to drop: "
+            read dbname4
+            
+            # Check if the database exists
+            db_exists=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$dbname4'")
+            
+            if [[ -z "$db_exists" ]]; then
+                echo "Error: Database '$dbname4' does not exist."
+            else
+                sudo -u postgres psql -c "DROP DATABASE $dbname4"
+                echo "Database '$dbname4' dropped successfully."
+            fi
+            break
+            ;;
+
+        "CRUD operations")
+                ./CRUD_operations
+            break
+               ;;
+	"add relationship")
+	        ./foreignkey_manag
+             break
+		;;
+            
+        *)
+            echo "Invalid option. Try again."
+            break
+            ;; 
+    esac
+done
