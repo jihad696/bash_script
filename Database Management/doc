@@ -1,1 +1,140 @@
+# PostgreSQL Database Management Scripts Documentation
 
+This documentation covers two shell scripts for PostgreSQL database management:
+1. `list_db` - For creating and managing database structures
+2. `CRUD_operations` - For performing Create, Read, Update, Delete operations on database tables
+
+## 1. list_db Script
+
+The `list_db` script provides functionality to create databases, tables, and perform various database administration tasks.
+
+### Core Functions
+
+#### `add_constraint()` Function
+
+This function adds constraints to table columns.
+
+**Parameters:**
+- `dbname`: Database name
+- `tbname`: Table name
+- `colname`: Column name
+- `existing_columns`: List of existing columns
+
+**Constraints Available:**
+- `NOT NULL`: Ensures the column cannot have NULL values
+- `UNIQUE`: Ensures all values in the column are unique
+- `PRIMARY KEY`: Defines a primary key constraint
+- `DEFAULT`: Sets a default value for the column
+- `CHECK`: Adds a condition check to the column values
+- `None`: Skip adding constraints
+
+For the `PRIMARY KEY` option, the script handles:
+- Checking if a primary key already exists
+- Creating composite keys
+- Replacing existing primary keys
+
+### Main Menu Options
+
+The script presents users with four main options:
+
+1. **create_new_database**
+   - Prompts for a database name
+   - Validates that the name is not empty
+   - Checks if the database already exists
+   - Creates the new database
+   - Allows creation of multiple tables
+     - For each table, allows adding multiple columns
+     - For each column, allows selection of data type (VARCHAR, INT, DATE)
+     - Allows adding constraints to columns
+
+2. **show all dbs**
+   - Lists all PostgreSQL databases on the system
+
+3. **DROP DATABASE**
+   - Prompts for a database name
+   - Verifies the database exists
+   - Deletes the specified database
+
+4. **CRUD operations**
+   - Executes the `CRUD_operations` script for performing data manipulation
+
+### Key Features
+
+- **Input Validation:**
+  - Empty name checks
+  - Existing object checks
+  - Column name format validation
+
+- **PostgreSQL Interaction:**
+  - Uses `sudo -u postgres psql` to execute PostgreSQL commands
+  - Properly quotes and escapes values
+
+- **User Experience:**
+  - Clear menu options using the `select` command
+  - Informative error messages
+  - Confirmation for dangerous operations
+
+## 2. CRUD_operations Script
+
+This script handles data manipulation operations on existing database tables.
+
+### Initial Setup
+
+- Prompts for database name and table name
+
+### Main Functions
+
+#### `select_query()`
+
+Provides options for reading data:
+- **select all**: Retrieves all rows and columns
+- **specific cols**: Retrieves specified columns
+- **select_with_condition**: Retrieves data with a WHERE condition
+
+#### `insert_query()`
+
+Provides options for inserting data:
+- **Insert All Columns**: Inserts values for all columns
+- **Insert Specific Columns**: Inserts values for specified columns
+
+#### `delete_query()`
+
+Provides options for deleting data:
+- **Delete All Data**: Removes all rows (with confirmation)
+- **Delete with Condition**: Removes rows based on a WHERE condition
+- **Cancel**: Aborts the delete operation
+
+#### `Update_fun()`
+
+Updates existing data:
+- Prompts for column name to update
+- Prompts for new value
+- Prompts for condition to identify rows to update
+
+### Main Menu
+
+The script presents four options:
+1. **Update**: Calls the `Update_fun()` function
+2. **DELETE**: Calls the `delete_query()` function
+3. **INSERT**: Calls the `insert_query()` function
+4. **SELECT**: Calls the `select_query()` function
+
+### Key Features
+
+- **Error Handling:**
+  - Captures and displays PostgreSQL error messages
+  - Uses return codes to check operation success
+
+- **User Safety:**
+  - Includes warnings for destructive operations
+  - Requires confirmation for deleting all data
+
+- **Visual Feedback:**
+  - Uses emoji (✅, ❌, ⚠) for visual status indicators
+  - Displays the SQL query before execution
+
+## Usage Workflow
+
+1. Run `list_db` to create and manage database structures
+2. Select "CRUD operations" or directly run `CRUD_operations` to work with data
+3. Perform desired data operations following the interactive prompts
